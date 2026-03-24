@@ -17,15 +17,11 @@
 
 ## 快速开始
 
-### 1. 获取iTick API Token
+### 获取iTick API Token
 
 1. 访问 [iTick官网](https://itick.org) 注册账号
 2. 登录后在个人中心获取 API Token
 3. 免费套餐即可满足基本使用
-
-### 2. 安装插件
-
-本插件所需依赖极少，直接安装即可使用
 
 ## 配置说明
 
