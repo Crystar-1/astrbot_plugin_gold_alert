@@ -2,7 +2,7 @@
 主模块：插件入口，定义插件主类和生命周期管理
 
 本模块是 AstrBot 插件的核心入口文件，主要职责：
-1. 定义插件主类 LondonGoldAlert
+1. 定义插件主类 GoldAlert
 2. 实现插件生命周期管理（初始化/卸载）
 3. 注册所有指令路由
 4. 权限检查辅助方法
@@ -10,7 +10,7 @@
 
 插件架构：
 ┌─────────────────────────────────────────────────────────────┐
-│                      LondonGoldAlert                        │
+│                        GoldAlert                            │
 ├─────────────────────────────────────────────────────────────┤
 │  生命周期方法：                                              │
 │    __init__()    -> 初始化配置、数据管理器                    │
@@ -59,12 +59,12 @@ def require_initialized(func):
 
 
 @register(
-    "london_gold_alert",
+    "gold_alert",
     "YourName",
     "伦敦金实时价格监控与到价提醒插件",
     "v1.0.0"
 )
-class LondonGoldAlert(Star):
+class GoldAlert(Star):
     """
     伦敦金提醒插件主类
     
@@ -219,7 +219,7 @@ class LondonGoldAlert(Star):
 
         数据文件存放在插件数据目录下
         """
-        data_dir = StarTools.get_data_dir("london_gold_alert")
+        data_dir = StarTools.get_data_dir("gold_alert")
         data_file = data_dir / "gold_alerts.json"
         self.data_manager = DataManager(data_file)
 

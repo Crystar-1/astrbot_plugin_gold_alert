@@ -1,3 +1,3 @@
-from .main import LondonGoldAlert
+from .main import GoldAlert
 
-__all__ = ["LondonGoldAlert"]
+__all__ = ["GoldAlert"]

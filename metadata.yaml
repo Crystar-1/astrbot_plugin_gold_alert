@@ -1,7 +1,7 @@
 name: astrbot_plugin_gold_alert
-display_name: iTick伦敦金价监控
+display_name: iTick金价监控
 
-desc: 伦敦金实时价格监控与到价提醒插件。基于iTick专业金融API，支持REST和WebSocket模式获取实时金价，设置价格提醒后自动通知。
+desc: 黄金实时价格监控与到价提醒插件。基于iTick专业金融API，支持REST和WebSocket模式获取实时金价，设置价格提醒后自动通知。
 
 author: Crystar-1
 
