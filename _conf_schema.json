@@ -1,0 +1,115 @@
+{
+    "itick_token": {
+        "description": "iTick API访问令牌",
+        "type": "string",
+        "hint": "请前往 https://itick.org 注册并获取API Token。这是连接iTick数据服务的必需凭证。",
+        "obvious_hint": true,
+        "default": "",
+        "category": "itick"
+    },
+    "itick_region": {
+        "description": "iTick地区代码",
+        "type": "string",
+        "hint": "外汇市场请使用 GB，股票市场请使用 HK/US/CN 等。默认 GB 适用于贵金属外汇品种。",
+        "obvious_hint": false,
+        "default": "GB",
+        "category": "itick"
+    },
+    "itick_gold_code": {
+        "description": "贵金属交易代码",
+        "type": "string",
+        "hint": "XAUUSD=黄金兑美元，XAGUSD=白银兑美元。可在iTick查看支持的交易品种。",
+        "obvious_hint": true,
+        "default": "XAUUSD",
+        "category": "itick"
+    },
+    "use_websocket": {
+        "description": "使用WebSocket实时推送",
+        "type": "bool",
+        "hint": "开启后使用WebSocket获取实时价格推送，延迟更低。需安装websocket-client库。",
+        "obvious_hint": false,
+        "default": false,
+        "category": "itick"
+    },
+    "query_interval": {
+        "description": "价格查询间隔",
+        "type": "int",
+        "hint": "全局统一价格查询间隔(秒)，建议设置为12-30秒之间。仅在REST模式下生效。",
+        "obvious_hint": true,
+        "default": 12,
+        "min": 5,
+        "max": 300,
+        "unit": "秒",
+        "category": "monitor"
+    },
+    "float_range": {
+        "description": "浮动范围",
+        "type": "float",
+        "hint": "以用户设定提醒价为基准的±浮动范围。当价格超出此范围时触发锁定解除。",
+        "obvious_hint": true,
+        "default": 10,
+        "min": 1,
+        "max": 100,
+        "unit": "美元",
+        "category": "monitor"
+    },
+    "lock_duration": {
+        "description": "锁定时长",
+        "type": "int",
+        "hint": "触发锁定后自动解锁的时长，防止短时间内重复触发提醒。",
+        "obvious_hint": true,
+        "default": 300,
+        "min": 60,
+        "max": 3600,
+        "unit": "秒",
+        "category": "monitor"
+    },
+    "alert_interval": {
+        "description": "提醒发送间隔",
+        "type": "int",
+        "hint": "重复发送提醒的间隔时间，每隔此时间发送一条提醒。",
+        "obvious_hint": true,
+        "default": 5,
+        "min": 1,
+        "max": 60,
+        "unit": "秒",
+        "category": "monitor"
+    },
+    "alert_count": {
+        "description": "提醒总条数",
+        "type": "int",
+        "hint": "每次触发累计发送的提醒条数，发送完此数量后停止。",
+        "obvious_hint": true,
+        "default": 3,
+        "min": 1,
+        "max": 10,
+        "unit": "条",
+        "category": "monitor"
+    },
+    "retry_count": {
+        "description": "API重试次数",
+        "type": "int",
+        "hint": "API请求失败时的最大重试次数，0表示不重试。",
+        "obvious_hint": false,
+        "default": 2,
+        "min": 0,
+        "max": 5,
+        "category": "monitor"
+    },
+    "whitelist": {
+        "description": "用户白名单",
+        "type": "list",
+        "hint": "只允许白名单中的用户使用本插件功能。留空表示不限制。",
+        "obvious_hint": true,
+        "default": [],
+        "category": "permission"
+    },
+    "admin_list": {
+        "description": "管理员列表",
+        "type": "list",
+        "hint": "管理员用户ID列表，用于接收系统通知和执行管理指令。",
+        "obvious_hint": true,
+        "default": [],
+        "category": "permission"
+    }
+}
