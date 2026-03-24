@@ -136,8 +136,6 @@ class GoldAlert(Star):
             logger.info("iTick Token: 已从环境变量加载")
         else:
             self.itick_token = self.config.get("itick_token", "")
-            if self.itick_token:
-                logger.warning("⚠️ 安全建议: iTick Token从配置文件加载，建议使用环境变量 ITICK_TOKEN 以提高安全性")
 
         self.itick_region = self.config.get("itick_region", "GB")
         self.itick_gold_code = self.config.get("itick_gold_code", "XAUUSD")
