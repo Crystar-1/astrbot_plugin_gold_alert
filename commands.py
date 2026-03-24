@@ -7,7 +7,6 @@ from astrbot.api.event import AstrMessageEvent
 from astrbot.api import logger
 from .data import AlertRule
 
-# 问题12修复：统一价格边界常量
 MIN_PRICE = Decimal("500")
 MAX_PRICE = Decimal("5000")
 
@@ -15,8 +14,6 @@ MAX_PRICE = Decimal("5000")
 def parse_price(price_str: str) -> Decimal | None:
     """
     解析价格字符串为Decimal类型（带边界检查）
-
-    修复问题7：保持边界检查用于添加操作
 
     Args:
         price_str: 价格字符串
@@ -39,8 +36,6 @@ def parse_price(price_str: str) -> Decimal | None:
 def parse_price_for_delete(price_str: str) -> Decimal | None:
     """
     解析价格字符串为Decimal类型（无边界限制）
-
-    修复问题7：删除操作不应有边界限制，允许删除历史遗留的超范围价格
 
     Args:
         price_str: 价格字符串
@@ -78,16 +73,7 @@ class GoldAlertCommands:
         return event.session_id
 
     def _is_group(self, event: AstrMessageEvent) -> bool:
-        """
-        判断是否为群聊场景
-
-        修复问题6：添加多种识别方式，提高健壮性
-
-        识别顺序：
-        1. 检查 event.is_group 属性
-        2. 检查 unified_msg_origin 字段
-        3. 检查 session_id 中是否包含群组标识
-        """
+        """判断是否为群聊场景"""
         is_group = getattr(event, 'is_group', None)
         if is_group is not None:
             return bool(is_group)
@@ -103,35 +89,19 @@ class GoldAlertCommands:
         return any(indicator in session_id.lower() for indicator in group_indicators)
 
     def _send_error(self, event: AstrMessageEvent, message: str):
-        """
-        统一的错误消息发送
-
-        修复问题9：消除代码重复
-        """
+        """统一的错误消息发送"""
         return event.plain_result(f"❌ {message}")
 
     def _send_success(self, event: AstrMessageEvent, message: str):
-        """
-        统一的成功消息发送
-
-        修复问题9：消除代码重复
-        """
+        """统一的成功消息发送"""
         return event.plain_result(f"✅ {message}")
 
     def _send_warning(self, event: AstrMessageEvent, message: str):
-        """
-        统一的警告消息发送
-
-        修复问题9：消除代码重复
-        """
+        """统一的警告消息发送"""
         return event.plain_result(f"⚠️ {message}")
 
     def _send_info(self, event: AstrMessageEvent, message: str):
-        """
-        统一的信息消息发送
-
-        修复问题9：消除代码重复
-        """
+        """统一的信息消息发送"""
         return event.plain_result(f"📋 {message}")
 
     async def cmd_gold_price(self, event: AstrMessageEvent):
@@ -158,11 +128,7 @@ class GoldAlertCommands:
             yield self._send_error(event, "获取金价时发生错误，请稍后重试")
 
     async def cmd_gold_add(self, event: AstrMessageEvent, price_str: str):
-        """
-        添加价格提醒
-
-        问题9修复：更新错误提示与实际校验规则一致
-        """
+        """添加价格提醒"""
         price = parse_price(price_str)
         if price is None:
             yield self._send_error(event, "无效的价格，请输入500-5000之间的正数（如：1900.50）")
@@ -205,11 +171,7 @@ class GoldAlertCommands:
         yield event.plain_result("\n".join(lines))
 
     async def cmd_gold_rm(self, event: AstrMessageEvent, price_str: str):
-        """
-        删除指定价格提醒
-
-        修复问题7：使用无边界版本，允许删除历史遗留的超范围价格
-        """
+        """删除指定价格提醒"""
         price = parse_price_for_delete(price_str)
         if price is None:
             yield self._send_error(event, "无效的价格格式")
@@ -234,12 +196,7 @@ class GoldAlertCommands:
             yield self._send_info(event, "您当前没有设置任何提醒")
 
     async def cmd_admin_list(self, event: AstrMessageEvent):
-        """
-        管理员查看所有用户提醒
-
-        问题4修复：添加类型检查，统一处理dict和AlertRule对象
-        admin_list_all_alerts()返回的是dict类型数据，但应兼容AlertRule对象
-        """
+        """管理员查看所有用户提醒"""
         all_alerts = self.data_manager.admin_list_all_alerts()
 
         if not all_alerts:
@@ -250,7 +207,6 @@ class GoldAlertCommands:
         for user_id, alerts in all_alerts.items():
             lines.append(f"👤 用户 {user_id} ({len(alerts)} 条提醒)：")
             for alert in alerts:
-                # 问题4修复：统一处理dict和AlertRule对象
                 if isinstance(alert, dict):
                     # 处理dict类型（admin_list_all_alerts返回的格式）
                     status = "🔒 锁定" if alert.get("is_locked") else "✅ 可用"
@@ -267,11 +223,7 @@ class GoldAlertCommands:
         yield event.plain_result("\n".join(lines))
 
     async def cmd_admin_rm(self, event: AstrMessageEvent, price_str: str, user_id: str):
-        """
-        管理员删除指定用户的提醒
-
-        问题10修复：移除未使用的 target_user 变量
-        """
+        """管理员删除指定用户的提醒"""
         price = parse_price(price_str)
         if price is None:
             yield self._send_error(event, "无效的价格格式")
@@ -286,13 +238,8 @@ class GoldAlertCommands:
             yield self._send_warning(event, "未找到该用户的提醒")
 
     async def cmd_admin_restart(self, event: AstrMessageEvent):
-        """
-        管理员重启监控
-
-        问题5修复：确保monitor property正确访问
-        使用局部变量避免重复访问property
-        """
-        monitor = self.monitor  # 使用局部变量避免重复访问
+        """管理员重启监控"""
+        monitor = self.monitor
         if not monitor:
             yield self._send_error(event, "监控器未初始化")
             return
@@ -308,13 +255,8 @@ class GoldAlertCommands:
             yield self._send_error(event, "重启失败")
 
     async def cmd_admin_stop(self, event: AstrMessageEvent):
-        """
-        管理员停止监控
-
-        问题5修复：确保monitor property正确访问
-        使用局部变量避免重复访问property
-        """
-        monitor = self.monitor  # 使用局部变量避免重复访问
+        """管理员停止监控"""
+        monitor = self.monitor
         if not monitor:
             yield self._send_error(event, "监控器未初始化")
             return

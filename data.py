@@ -22,12 +22,7 @@ from astrbot.api import logger
 
 
 class DecimalEncoder(json.JSONEncoder):
-    """
-    自定义JSON编码器，支持Decimal类型序列化
-
-    修复问题8：将Decimal转换为字符串以避免float精度损失
-    金融价格数据必须保持精度，字符串序列化是最安全的方式
-    """
+    """自定义JSON编码器，支持Decimal类型序列化为字符串"""
 
     def default(self, obj):
         if isinstance(obj, Decimal):
@@ -36,12 +31,7 @@ class DecimalEncoder(json.JSONEncoder):
 
 
 def decimal_decoder(dct: dict) -> dict:
-    """
-    JSON反序列化钩子，将字符串转换回Decimal
-
-    修复问题8：直接解析字符串为Decimal，保持精度
-    处理可能的价格字段名
-    """
+    """JSON反序列化钩子，将字符串转换回Decimal"""
     price_fields = {"price", "latest_price", "current_price"}
     for key in dct:
         if key in price_fields and isinstance(dct[key], (str, float)):
@@ -84,17 +74,7 @@ class AlertRule:
 
     @classmethod
     def from_dict(cls, data: dict) -> "AlertRule | None":
-        """
-        从字典数据创建提醒规则实例，用于JSON反序列化
-
-        修复问题9：修正返回类型为 Optional[AlertRule]
-
-        Args:
-            data: 字典数据
-
-        Returns:
-            AlertRule实例，或None（数据无效时）
-        """
+        """从字典数据创建提醒规则实例，用于JSON反序列化"""
         if not isinstance(data, dict):
             logger.warning(f"AlertRule反序列化失败：数据不是字典类型")
             return None
@@ -113,7 +93,6 @@ class AlertRule:
             return None
         
         try:
-            # 问题11修复：恢复所有关键字段，确保状态完整性
             return cls(
                 price=price,
                 user_id=str(data.get("user_id", "")),
@@ -151,13 +130,7 @@ class PluginData:
 
     @classmethod
     def from_dict(cls, data: dict) -> "PluginData":
-        """
-        从字典数据恢复插件数据实例
-
-        问题14修复：添加完整的输入结构校验，确保数据完整性
-        
-        注意：对alerts数据做类型校验，确保每个提醒都包含必需的price字段
-        """
+        """从字典数据恢复插件数据实例"""
         if not isinstance(data, dict):
             logger.warning("PluginData反序列化失败：数据不是字典类型")
             return cls()
@@ -167,7 +140,6 @@ class PluginData:
         
         if isinstance(raw_alerts, dict):
             for user_id, user_alerts in raw_alerts.items():
-                # 问题14修复：确保每个用户的提醒列表是有效的list
                 if not isinstance(user_alerts, list):
                     logger.warning(f"PluginData反序列化：用户 {user_id} 的提醒数据格式错误，跳过")
                     continue
@@ -209,20 +181,7 @@ class DataManager:
 
     @staticmethod
     def _normalize_price(price: Union[float, Decimal, str, None]) -> Decimal:
-        """
-        统一价格格式为Decimal
-
-        修复问题10：添加异常兜底处理
-
-        Args:
-            price: 价格（可能是float、Decimal或字符串或None）
-
-        Returns:
-            Decimal类型的价格
-
-        Raises:
-            ValueError: 价格格式无效
-        """
+        """统一价格格式为Decimal"""
         if price is None:
             raise ValueError("价格不能为None")
 
@@ -239,20 +198,13 @@ class DataManager:
         self.data_file.parent.mkdir(parents=True, exist_ok=True)
 
     def initialize(self) -> None:
-        """
-        初始化数据管理器，加载持久化数据
-
-        使用同步方法，避免异步上下文问题
-        
-        问题7修复：使用decimal_decoder确保反序列化时Decimal类型正确
-        """
+        """初始化数据管理器，加载持久化数据"""
         if self._initialized:
             return
 
         try:
             if self.data_file.exists():
                 with open(self.data_file, "r", encoding="utf-8") as f:
-                    # 问题7修复：使用decimal_decoder将float转换回Decimal
                     data = json.load(f, object_hook=decimal_decoder)
                     self._data = PluginData.from_dict(data)
                     logger.info(f"已加载持久化数据: {len(self._data.alerts)} 个用户有提醒设置")
@@ -268,11 +220,7 @@ class DataManager:
         self._initialized = True
 
     def _save_sync(self) -> None:
-        """
-        同步保存数据到文件
-        
-        问题7修复：使用DecimalEncoder确保Decimal类型正确序列化
-        """
+        """同步保存数据到文件"""
         self._ensure_dir()
         with open(self.data_file, "w", encoding="utf-8") as f:
             json.dump(self._data.to_dict(), f, ensure_ascii=False, indent=2, cls=DecimalEncoder)
@@ -306,42 +254,28 @@ class DataManager:
             self._save_sync()
 
     def get_all_alerts(self) -> List[AlertRule]:
-        """
-        获取所有用户的提醒列表
-        
-        问题12修复：过滤无效的提醒数据，防止 AttributeError
-        """
+        """获取所有用户的提醒列表"""
         if not self._data:
             return []
 
         all_alerts = []
         for user_alerts in self._data.alerts.values():
             for alert_data in user_alerts:
-                # 问题12修复：过滤 None 值
                 alert = AlertRule.from_dict(alert_data)
                 if alert is not None:
                     all_alerts.append(alert)
         return all_alerts
 
     def get_user_alerts(self, user_id: str) -> List[AlertRule]:
-        """
-        获取指定用户的所有提醒规则
-        
-        问题12修复：过滤无效的提醒数据，防止 AttributeError
-        """
+        """获取指定用户的所有提醒规则"""
         if not self._data:
             return []
 
         alerts = self._data.alerts.get(user_id, [])
-        # 问题12修复：过滤 None 值
         return [alert for a in alerts if (alert := AlertRule.from_dict(a)) is not None]
 
     def add_alert(self, alert: AlertRule) -> bool:
-        """
-        添加新的提醒规则
-        
-        问题13修复：使用字符串比较避免 Decimal/float 精度问题
-        """
+        """添加新的提醒规则"""
         with self._lock:
             if not self._data:
                 return False
@@ -350,7 +284,6 @@ class DataManager:
             if user_id not in self._data.alerts:
                 self._data.alerts[user_id] = []
 
-            # 问题13修复：统一转换为字符串比较，避免 Decimal/float 精度问题
             alert_price_str = str(alert.price)
             for existing in self._data.alerts[user_id]:
                 existing_price = existing.get("price")

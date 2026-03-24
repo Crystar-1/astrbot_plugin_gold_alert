@@ -165,15 +165,7 @@ class GoldPriceAPI:
         self._websocket_available: Optional[bool] = None
 
     def _check_websocket_available(self) -> bool:
-        """
-        检查WebSocket库是否可用
-
-        修复问题13：添加运行时依赖检测
-
-        Returns:
-            True: websocket-client库已安装
-            False: websocket-client库未安装
-        """
+        """检查WebSocket库是否可用"""
         if self._websocket_available is not None:
             return self._websocket_available
 
@@ -210,13 +202,11 @@ class GoldPriceAPI:
     def _parse_price_data(self, price_data: dict, source_suffix: str = "") -> Optional[GoldPrice]:
         """
         统一的价格数据解析方法
-        
-        问题8修复：提取公共解析逻辑，消除代码重复
-        
+
         Args:
             price_data: 价格数据字典，包含 ld（价格）和 t（时间戳）
             source_suffix: 来源标识后缀，如 "-WS" 表示WebSocket
-            
+
         Returns:
             GoldPrice对象或None（解析失败时）
         """
@@ -243,28 +233,19 @@ class GoldPriceAPI:
             return None
 
     def _start_callback_processor(self) -> None:
-        """
-        启动回调处理器（在事件循环中调用）
-        
-        问题7修复：确保任务不会被重复创建，添加运行时检查
-        """
+        """启动回调处理器（在事件循环中调用）"""
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             logger.warning("无法获取运行中的事件循环，跳过回调处理器初始化")
             return
-        
-        # 问题7修复：双重检查确保只创建一个任务
+
         if self._callback_task is None or self._callback_task.done():
             self._callback_task = loop.create_task(self._process_callbacks())
             logger.debug("回调处理器任务已创建")
 
     async def _process_callbacks(self) -> None:
-        """
-        处理回调队列中的异步任务
-
-        修复问题4：使用 asyncio.to_thread 处理同步回调，避免阻塞事件循环
-        """
+        """处理回调队列中的异步任务"""
         while self._ws_running.is_set():
             try:
                 callback, price = await asyncio.wait_for(
@@ -307,8 +288,6 @@ class GoldPriceAPI:
     async def close(self) -> None:
         """
         关闭HTTP会话和WebSocket连接
-
-        修复问题5：显式取消和等待 _callback_task 回收
 
         调用时机：
         - 插件卸载时
@@ -400,7 +379,6 @@ class GoldPriceAPI:
                     logger.warning("iTick API返回数据为空")
                     return None
 
-                # 问题8修复：使用公共解析方法
                 gold_price = self._parse_price_data(price_data)
                 if gold_price is None:
                     logger.warning("iTick API价格数据解析失败")
@@ -464,19 +442,14 @@ class GoldPriceAPI:
         """
         停止WebSocket连接
 
-        问题2修复：确保线程安全的停止顺序，避免竞态条件
-        问题3修复：使用 getattr 安全访问属性
-
         停止顺序：
         1. 先设置停止标志
         2. 关闭WebSocket连接
         3. 等待线程结束
         """
-        # 问题2修复：先设置停止标志，防止新的连接
         self._ws_running.clear()
         self._ws_connected.clear()
 
-        # 问题3修复：使用 getattr 安全访问，避免 AttributeError
         ws = getattr(self, '_ws', None)
         if ws:
             try:
@@ -484,7 +457,6 @@ class GoldPriceAPI:
             except Exception as e:
                 logger.debug(f"WebSocket关闭异常: {e}")
 
-        # 等待线程结束
         ws_thread = getattr(self, '_ws_thread', None)
         if ws_thread and ws_thread.is_alive():
             ws_thread.join(timeout=3)
@@ -586,9 +558,6 @@ class GoldPriceAPI:
         """
         处理WebSocket价格数据
 
-        修复问题3：使用 call_soon_threadsafe 确保跨线程安全的回调写入
-        asyncio.Queue 不是线程安全的，必须使用事件循环的 call_soon_threadsafe 方法
-
         Args:
             price_data: WebSocket推送的价格数据
         """
@@ -604,15 +573,7 @@ class GoldPriceAPI:
         logger.debug(f"WebSocket价格更新: ${gold_price.price}")
 
     def _queue_callback(self, callback: callable, gold_price: GoldPrice) -> None:
-        """
-        线程安全地投递回调到队列
-
-        修复问题3：使用 call_soon_threadsafe 实现跨线程安全的队列写入
-
-        Args:
-            callback: 回调函数
-            gold_price: 价格数据
-        """
+        """线程安全地投递回调到队列"""
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():

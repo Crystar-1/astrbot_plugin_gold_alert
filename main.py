@@ -121,15 +121,7 @@ class GoldAlert(Star):
         logger.info("伦敦金提醒插件初始化完成")
 
     def _load_itick_config(self) -> None:
-        """
-        加载iTick API配置
-
-        修复问题7：优先从环境变量读取，配置文件加载时给出安全警告
-
-        安全建议：
-        - 生产环境应使用环境变量 ITICK_TOKEN 存储敏感信息
-        - 避免将Token直接写入配置文件
-        """
+        """加载iTick API配置"""
         env_token = os.environ.get("ITICK_TOKEN")
         if env_token:
             self.itick_token = env_token
@@ -142,12 +134,7 @@ class GoldAlert(Star):
         self.use_websocket = self.config.get("use_websocket", False)
 
     def _validate_and_apply_monitor_config(self) -> None:
-        """
-        验证并应用监控配置参数
-
-        修复问题5：将配置验证逻辑提取为独立方法，解决__init__过长问题
-        修复问题4：统一使用配置对象进行验证
-        """
+        """验证并应用监控配置参数"""
         self.query_interval = self.config.get("query_interval", 12)
         self.float_range = self.config.get("float_range", 10.0)
         self.lock_duration = self.config.get("lock_duration", 300)
@@ -293,26 +280,19 @@ class GoldAlert(Star):
 
         except Exception as e:
             logger.error(f"插件初始化失败: {e}", exc_info=True)
-            # 问题1修复：设置初始化失败标志，防止用户在错误状态下执行指令
             self._init_failed = True
 
     async def terminate(self) -> None:
         """
         插件卸载/停止
-        
-        问题10修复：添加异常处理和标志位重置，确保资源正确释放
-        
+
         AstrBot 会在插件被禁用或机器人关闭时调用此方法
-        
+
         清理工作：
         1. 停止监控任务（优雅终止）
         2. 关闭API客户端连接
         3. 重置初始化标志
         4. 释放相关资源
-        
-        注意：
-        - 不删除持久化数据
-        - 不发送任何通知
         """
         try:
             if self.monitor:
@@ -324,8 +304,7 @@ class GoldAlert(Star):
             await self.api.close()
         except Exception as e:
             logger.error(f"关闭API客户端失败: {e}", exc_info=True)
-        
-        # 问题10修复：重置初始化标志
+
         self._initialized = False
         self._init_failed = False
         
@@ -342,7 +321,6 @@ class GoldAlert(Star):
     @require_initialized
     async def cmd_gold_price(self, event: AstrMessageEvent):
         """查询当前金价 /gold price"""
-        # 问题3修复：权限检查失败时提供明确的错误消息
         if not self._check_whitelist(event):
             yield event.plain_result("❌ 您没有权限使用此功能，请联系管理员")
             return
@@ -355,14 +333,11 @@ class GoldAlert(Star):
         """
         添加价格提醒
 
-        修复问题2：使用 str 类型避免 float 精度损失
-
         使用方式：/gold add 1900
 
         Args:
             price: 提醒价格（美元/盎司）
         """
-        # 问题3修复：权限检查失败时提供明确的错误消息
         if not self._check_whitelist(event):
             yield event.plain_result("❌ 您没有权限使用此功能，请联系管理员")
             return
@@ -373,7 +348,6 @@ class GoldAlert(Star):
     @require_initialized
     async def cmd_gold_ls(self, event: AstrMessageEvent):
         """查看我的提醒"""
-        # 问题3修复：权限检查失败时提供明确的错误消息
         if not self._check_whitelist(event):
             yield event.plain_result("❌ 您没有权限使用此功能，请联系管理员")
             return
@@ -386,14 +360,11 @@ class GoldAlert(Star):
         """
         删除提醒
 
-        修复问题2：使用 str 类型避免 float 精度损失
-
         使用方式：/gold rm 1900
 
         Args:
             price: 要删除的提醒价格
         """
-        # 问题3修复：权限检查失败时提供明确的错误消息
         if not self._check_whitelist(event):
             yield event.plain_result("❌ 您没有权限使用此功能，请联系管理员")
             return
@@ -404,7 +375,6 @@ class GoldAlert(Star):
     @require_initialized
     async def cmd_gold_rmall(self, event: AstrMessageEvent):
         """删除所有提醒"""
-        # 问题3修复：权限检查失败时提供明确的错误消息
         if not self._check_whitelist(event):
             yield event.plain_result("❌ 您没有权限使用此功能，请联系管理员")
             return
@@ -422,7 +392,6 @@ class GoldAlert(Star):
     @require_initialized
     async def cmd_admgold_list(self, event: AstrMessageEvent):
         """查看所有用户的提醒"""
-        # 问题3修复：权限检查失败时提供明确的错误消息
         if not self._check_admin(event):
             yield event.plain_result("❌ 您没有管理员权限，无法执行此操作")
             return
@@ -434,14 +403,13 @@ class GoldAlert(Star):
     async def cmd_admgold_rm(self, event: AstrMessageEvent, price: float, user_id: str):
         """
         删除指定用户的提醒
-        
+
         使用方式：/admgold rm 1900 12345678
-        
+
         Args:
             price: 提醒价格
             user_id: 目标用户QQ号
         """
-        # 问题3修复：权限检查失败时提供明确的错误消息
         if not self._check_admin(event):
             yield event.plain_result("❌ 您没有管理员权限，无法执行此操作")
             return
@@ -452,7 +420,6 @@ class GoldAlert(Star):
     @require_initialized
     async def cmd_admgold_restart(self, event: AstrMessageEvent):
         """重启监控"""
-        # 问题3修复：权限检查失败时提供明确的错误消息
         if not self._check_admin(event):
             yield event.plain_result("❌ 您没有管理员权限，无法执行此操作")
             return
@@ -463,7 +430,6 @@ class GoldAlert(Star):
     @require_initialized
     async def cmd_admgold_stop(self, event: AstrMessageEvent):
         """停止监控"""
-        # 问题3修复：权限检查失败时提供明确的错误消息
         if not self._check_admin(event):
             yield event.plain_result("❌ 您没有管理员权限，无法执行此操作")
             return
@@ -556,11 +522,7 @@ class GoldAlert(Star):
         return None
 
     async def _send_message(self, session_id: str, message: str, user_id: str, is_group: bool) -> bool:
-        """
-        发送消息给用户（使用平台API直接发送）
-        
-        问题4修复：添加 ID 格式验证，提供明确的错误消息
-        """
+        """发送消息给用户（使用平台API直接发送）"""
         try:
             client = self._get_client()
             if not client:
@@ -569,14 +531,12 @@ class GoldAlert(Star):
 
             if is_group:
                 message_parts = [{"type": "at", "data": {"qq": user_id}}, {"type": "text", "data": {"text": f" {message}"}}]
-                # 问题4修复：添加 ValueError 捕获
                 try:
                     await client.api.call_action("send_group_msg", group_id=int(session_id), message=message_parts)
                 except ValueError:
                     logger.error(f"群ID格式无效: {session_id}")
                     return False
             else:
-                # 问题4修复：添加 ValueError 捕获
                 try:
                     await client.api.call_action("send_private_msg", user_id=int(user_id), message=message)
                 except ValueError:
@@ -621,12 +581,8 @@ class GoldAlert(Star):
 
         等同于 /gold
         """
-        # 问题3修复：权限检查失败时提供明确的错误消息
         if not self._check_whitelist(event):
             yield event.plain_result("❌ 您没有权限使用此功能，请联系管理员")
             return
         async for result in self.commands.cmd_gold_price(event):
             yield result
-
-    # 问题18修复：删除冗余的中文指令"实时金价"
-    # 保留统一的 /gold 指令作为主入口

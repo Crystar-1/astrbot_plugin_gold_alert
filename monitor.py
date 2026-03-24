@@ -55,7 +55,6 @@ class PriceMonitor:
         data_manager: DataManager,
         config: MonitorConfig,
         api: GoldPriceAPI,
-        # 问题15修复：更新类型签名，使用4个参数
         send_message_func: Callable[[str, str, str, bool], Awaitable[bool]],
         notify_admin_func: Callable[[str], Awaitable[None]] | None = None
     ):
@@ -70,7 +69,6 @@ class PriceMonitor:
         self._stopped = False
         self._last_price: Optional[Decimal] = None
         self._send_fail_users: dict = {}
-        # 问题2修复：添加线程锁保护并发访问
         self._send_fail_lock = Lock()
 
     async def start(self) -> bool:
@@ -86,21 +84,13 @@ class PriceMonitor:
         return True
 
     async def stop(self) -> None:
-        """
-        停止价格监控任务
-        
-        问题3修复：移除错误的asyncio.shield()调用
-        asyncio.shield()用于保护任务不被取消，但会阻止stop()正确终止
-        问题6修复：不在此处关闭API，由主类统一管理API生命周期
-        问题13修复：添加超时机制，确保任务能被正确取消
-        """
+        """停止价格监控任务"""
         self._running = False
         self._stopped = True
         
         if self._task:
             self._task.cancel()
             try:
-                # 问题13修复：添加超时机制
                 await asyncio.wait_for(self._task, timeout=2.0)
             except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
@@ -153,12 +143,7 @@ class PriceMonitor:
                 await asyncio.sleep(5)
 
     async def _process_price(self, current_price: Decimal) -> None:
-        """
-        处理当前价格，检查是否触发用户的提醒
-
-        修复问题12：改为分批处理，避免触发任务被跳过导致漏报
-        问题14修复：统一将 float_range 转换为 Decimal 进行运算，避免精度问题
-        """
+        """处理当前价格，检查是否触发用户的提醒"""
         MAX_TRIGGER_BATCH = 50
 
         alerts = self.data_manager.get_all_alerts()
@@ -203,9 +188,6 @@ class PriceMonitor:
     def _evaluate_alert_action(self, alert: AlertRule, current_price: Decimal) -> str:
         """
         评估单个提醒的状态
-
-        修复问题12：提取价格判断逻辑为独立方法，降低圈复杂度
-        修复问题11：增加DEBUG级别日志
 
         Returns:
             "trigger": 应该触发提醒
@@ -281,11 +263,7 @@ class PriceMonitor:
             return True
 
     async def _trigger_alert(self, alert: AlertRule, current_price: Decimal) -> None:
-        """
-        触发提醒
-
-        修复问题11：只在发送成功后才锁定，避免用户没收到提醒却被锁定
-        """
+        """触发提醒"""
         logger.info(f"触发提醒: 用户 {alert.user_id}, 设定价 ${alert.price}, 当前价 ${current_price}")
 
         try:
@@ -310,8 +288,6 @@ class PriceMonitor:
     async def _send_alert_messages(self, alert: AlertRule, current_price: Decimal) -> bool:
         """
         发送提醒消息
-
-        修复问题11：返回发送结果，调用方根据结果决定是否锁定
 
         Returns:
             True: 至少发送成功一次
@@ -362,20 +338,12 @@ class PriceMonitor:
             )
 
     def _record_send_fail(self, user_id: str, count: int) -> None:
-        """
-        记录发送失败
-        
-        问题2修复：使用锁保护并发访问，防止竞态条件
-        """
+        """记录发送失败"""
         with self._send_fail_lock:
             self._send_fail_users[user_id] = count
 
     def _clear_send_fail(self, user_id: str) -> None:
-        """
-        清除发送失败记录
-        
-        问题2修复：使用锁保护并发访问，防止竞态条件
-        """
+        """清除发送失败记录"""
         with self._send_fail_lock:
             if user_id in self._send_fail_users:
                 del self._send_fail_users[user_id]
