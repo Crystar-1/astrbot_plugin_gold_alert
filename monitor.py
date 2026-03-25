@@ -23,16 +23,17 @@
 
 import asyncio
 from decimal import Decimal
-from typing import Optional, Callable, Awaitable
+from typing import TYPE_CHECKING, Optional, Callable, Awaitable
 from datetime import datetime
 from dataclasses import dataclass
-from threading import Lock
 import aiohttp
 from astrbot.api import logger
 from .api import GoldPriceAPI, GoldPrice, fetch_gold_price_with_retry
 from .data import DataManager, AlertRule
+from .constants import MAX_SEND_FAIL_COUNT, MAX_TRIGGER_BATCH, RETRY_DELAY_SHORT, RETRY_DELAY_LONG
 
-MAX_SEND_FAIL_COUNT = 3
+if TYPE_CHECKING:
+    from astrbot.api.star import Context
 
 
 @dataclass
@@ -51,13 +52,13 @@ class PriceMonitor:
 
     def __init__(
         self,
-        context,
+        context: "Context",
         data_manager: DataManager,
         config: MonitorConfig,
         api: GoldPriceAPI,
         send_message_func: Callable[[str, str, str, bool], Awaitable[bool]],
         notify_admin_func: Callable[[str], Awaitable[None]] | None = None
-    ):
+    ) -> None:
         self.context = context
         self.data_manager = data_manager
         self.config = config
@@ -68,8 +69,6 @@ class PriceMonitor:
         self._running = False
         self._stopped = False
         self._last_price: Optional[Decimal] = None
-        self._send_fail_users: dict = {}
-        self._send_fail_lock = Lock()
 
     async def start(self) -> bool:
         """启动价格监控任务"""
@@ -137,15 +136,13 @@ class PriceMonitor:
                 await asyncio.sleep(self.config.query_interval)
             except ValueError as e:
                 logger.error(f"数据解析错误: {e}", exc_info=True)
-                await asyncio.sleep(5)
+                await asyncio.sleep(RETRY_DELAY_SHORT)
             except Exception as e:
                 logger.critical(f"未预期的监控异常: {e}", exc_info=True)
-                await asyncio.sleep(5)
+                await asyncio.sleep(RETRY_DELAY_SHORT)
 
     async def _process_price(self, current_price: Decimal) -> None:
         """处理当前价格，检查是否触发用户的提醒"""
-        MAX_TRIGGER_BATCH = 50
-
         alerts = self.data_manager.get_all_alerts()
 
         trigger_batch = []
@@ -307,11 +304,9 @@ class PriceMonitor:
             if sent:
                 success_count += 1
                 self.data_manager.reset_send_fail(alert.user_id, alert.price)
-                self._clear_send_fail(alert.user_id)
             else:
                 fail_count += 1
                 count = self.data_manager.increment_send_fail(alert.user_id, alert.price)
-                self._record_send_fail(alert.user_id, count)
 
                 if count >= MAX_SEND_FAIL_COUNT:
                     self.data_manager.disable_alert(alert.user_id, alert.price)
@@ -336,17 +331,6 @@ class PriceMonitor:
             await self._notify_admin(
                 f"⚠️ 用户 {user_id} 提醒已被禁用，原因：连续{MAX_SEND_FAIL_COUNT}次消息发送失败（价格: {price}）"
             )
-
-    def _record_send_fail(self, user_id: str, count: int) -> None:
-        """记录发送失败"""
-        with self._send_fail_lock:
-            self._send_fail_users[user_id] = count
-
-    def _clear_send_fail(self, user_id: str) -> None:
-        """清除发送失败记录"""
-        with self._send_fail_lock:
-            if user_id in self._send_fail_users:
-                del self._send_fail_users[user_id]
 
     def is_running(self) -> bool:
         """检查监控是否运行中"""

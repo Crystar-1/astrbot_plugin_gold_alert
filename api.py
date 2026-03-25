@@ -29,11 +29,7 @@ from threading import Thread, Event
 import aiohttp
 from astrbot.api import logger
 
-# 价格合法性校验常量
-MIN_PRICE = Decimal("500")   # 伦敦金合理报价下限（美元/盎司）
-MAX_PRICE = Decimal("5000")  # 伦敦金合理报价上限（美元/盎司）
-MAX_TIMESTAMP_DIFF = 60  # 报价时间戳最大允许偏差（秒）
-MAX_CALLBACK_QUEUE_SIZE = 100  # 回调队列最大容量
+from .constants import MIN_PRICE, MAX_PRICE, MAX_TIMESTAMP_DIFF, MAX_CALLBACK_QUEUE_SIZE
 
 
 @dataclass
@@ -163,6 +159,7 @@ class GoldPriceAPI:
         self._callback_task: Optional[asyncio.Task] = None
         self._websocket_module: Optional[object] = None
         self._websocket_available: Optional[bool] = None
+        self._ws_error_occurred: bool = False
 
     def _check_websocket_available(self) -> bool:
         """检查WebSocket库是否可用"""
@@ -232,17 +229,25 @@ class GoldPriceAPI:
             logger.warning(f"价格数据解析失败: {e}")
             return None
 
-    def _start_callback_processor(self) -> None:
-        """启动回调处理器（在事件循环中调用）"""
+    def _start_callback_processor(self) -> bool:
+        """
+        启动回调处理器（在事件循环中调用）
+
+        Returns:
+            True: 启动成功
+            False: 启动失败（无运行中的事件循环或任务已存在）
+        """
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             logger.warning("无法获取运行中的事件循环，跳过回调处理器初始化")
-            return
+            return False
 
         if self._callback_task is None or self._callback_task.done():
             self._callback_task = loop.create_task(self._process_callbacks())
             logger.debug("回调处理器任务已创建")
+
+        return True
 
     async def _process_callbacks(self) -> None:
         """处理回调队列中的异步任务"""
@@ -432,7 +437,8 @@ class GoldPriceAPI:
             return False
 
         self._ws_running.set()
-        self._start_callback_processor()
+        if not self._start_callback_processor():
+            logger.warning("WebSocket回调处理器启动失败，但继续启动连接")
         self._ws_thread = Thread(target=self._websocket_loop, daemon=True)
         self._ws_thread.start()
         logger.info("iTick WebSocket已启动")
@@ -505,14 +511,16 @@ class GoldPriceAPI:
                 ws.ping_interval = self.config.websocket_ping_interval
 
                 self._ws = ws
+                self._ws_error_occurred = False
                 ws.run_forever(ping_interval=self.config.websocket_ping_interval)
 
-                if self._ws_running.is_set():
+                if self._ws_running.is_set() and self._ws_error_occurred:
                     reconnect_attempts += 1
                     logger.info(f"WebSocket断开，尝试重连 ({reconnect_attempts}/{max_reconnect_attempts})")
                     time.sleep(3)
 
             except Exception as e:
+                self._ws_error_occurred = True
                 logger.error(f"WebSocket异常: {e}")
 
         if reconnect_attempts >= max_reconnect_attempts:
@@ -575,7 +583,11 @@ class GoldPriceAPI:
     def _queue_callback(self, callback: callable, gold_price: GoldPrice) -> None:
         """线程安全地投递回调到队列"""
         try:
-            loop = asyncio.get_event_loop()
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = asyncio.get_event_loop()
+
             if loop.is_running():
                 loop.call_soon_threadsafe(
                     self._put_callback_to_queue,
@@ -585,14 +597,7 @@ class GoldPriceAPI:
             else:
                 self._put_callback_to_queue(callback, gold_price)
         except RuntimeError:
-            try:
-                asyncio.get_running_loop().call_soon_threadsafe(
-                    self._put_callback_to_queue,
-                    callback,
-                    gold_price
-                )
-            except RuntimeError:
-                logger.warning("无法获取事件循环，跳过回调")
+            logger.warning("无法获取事件循环，跳过回调")
 
     def _put_callback_to_queue(self, callback: callable, gold_price: GoldPrice) -> None:
         """
@@ -609,6 +614,7 @@ class GoldPriceAPI:
 
     def _on_ws_error(self, ws, error) -> None:
         """WebSocket错误回调"""
+        self._ws_error_occurred = True
         logger.warning(f"WebSocket错误: {error}")
 
     def _on_ws_close(self, ws, close_status_code, close_msg) -> None:

@@ -2,13 +2,17 @@
 指令模块：处理用户和管理员输入的指令
 """
 
+from __future__ import annotations
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+from typing import TYPE_CHECKING, Optional
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api import logger
 from .data import AlertRule
+from .constants import MIN_PRICE, MAX_PRICE
 
-MIN_PRICE = Decimal("500")
-MAX_PRICE = Decimal("5000")
+if TYPE_CHECKING:
+    from .monitor import PriceMonitor
+    from .main import GoldAlert
 
 
 def parse_price(price_str: str) -> Decimal | None:
@@ -55,16 +59,23 @@ def parse_price_for_delete(price_str: str) -> Decimal | None:
 class GoldAlertCommands:
     """黄金提醒指令处理器"""
 
-    def __init__(self, star_instance):
+    def __init__(self, star_instance: "GoldAlert") -> None:
         self.star = star_instance
         self.context = star_instance.context
         self.data_manager = star_instance.data_manager
         self.api = star_instance.api
 
     @property
-    def monitor(self):
+    def monitor(self) -> "Optional[PriceMonitor]":
         """延迟获取monitor，避免初始化时为None"""
         return self.star.monitor
+
+    def _get_monitor_safe(self) -> "Optional[PriceMonitor]":
+        """安全获取monitor实例，带空值检查"""
+        monitor = self.star.monitor
+        if monitor is None:
+            logger.warning("Monitor尚未初始化，无法执行操作")
+        return monitor
 
     def _get_user_id(self, event: AstrMessageEvent) -> str:
         return str(event.get_sender_id())
@@ -85,8 +96,16 @@ class GoldAlertCommands:
                 return True
 
         session_id = getattr(event, 'session_id', '') or ''
-        group_indicators = ['group', 'channel', '@g.', '@c.']
-        return any(indicator in session_id.lower() for indicator in group_indicators)
+        return self._session_id_indicates_group(session_id)
+
+    @staticmethod
+    def _session_id_indicates_group(session_id: str) -> bool:
+        """根据session_id判断是否为群聊"""
+        if not session_id:
+            return False
+        session_lower = session_id.lower()
+        group_indicators = ('group', 'channel', '@g.', '@c.')
+        return any(ind in session_lower for ind in group_indicators)
 
     def _send_error(self, event: AstrMessageEvent, message: str):
         """统一的错误消息发送"""
@@ -239,8 +258,8 @@ class GoldAlertCommands:
 
     async def cmd_admin_restart(self, event: AstrMessageEvent):
         """管理员重启监控"""
-        monitor = self.monitor
-        if not monitor:
+        monitor = self._get_monitor_safe()
+        if monitor is None:
             yield self._send_error(event, "监控器未初始化")
             return
 
@@ -256,8 +275,8 @@ class GoldAlertCommands:
 
     async def cmd_admin_stop(self, event: AstrMessageEvent):
         """管理员停止监控"""
-        monitor = self.monitor
-        if not monitor:
+        monitor = self._get_monitor_safe()
+        if monitor is None:
             yield self._send_error(event, "监控器未初始化")
             return
 

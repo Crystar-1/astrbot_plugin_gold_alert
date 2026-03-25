@@ -162,10 +162,12 @@ class DataManager:
     数据管理器：负责插件数据的持久化存储
 
     设计要点：
-    1. 线程安全的文件I/O：使用threading.Lock配合asyncio.to_thread()，避免阻塞事件循环
+    1. 线程安全的文件I/O：使用类级别threading.Lock配合asyncio.to_thread()，避免阻塞事件循环
     2. 惰性加载：数据在首次访问时才从磁盘加载
     3. 自动保存：任何数据修改后自动持久化到磁盘
     """
+
+    _lock: threading.Lock = threading.Lock()
 
     def __init__(self, data_file: Path):
         """
@@ -175,7 +177,6 @@ class DataManager:
             data_file: 持久化数据文件的路径
         """
         self.data_file = data_file
-        self._lock = threading.Lock()
         self._data: Optional[PluginData] = None
         self._initialized = False
 
@@ -236,7 +237,7 @@ class DataManager:
 
     def _save_with_lock(self) -> None:
         """带锁的同步保存"""
-        with self._lock:
+        with DataManager._lock:
             self._save_sync()
 
     def save(self) -> None:
@@ -249,7 +250,7 @@ class DataManager:
 
     def _update_with_lock(self, update_func) -> None:
         """在锁内执行更新操作"""
-        with self._lock:
+        with DataManager._lock:
             update_func()
             self._save_sync()
 
@@ -276,7 +277,7 @@ class DataManager:
 
     def add_alert(self, alert: AlertRule) -> bool:
         """添加新的提醒规则"""
-        with self._lock:
+        with DataManager._lock:
             if not self._data:
                 return False
 
@@ -299,7 +300,7 @@ class DataManager:
     def remove_alert(self, user_id: str, price: Union[float, Decimal]) -> bool:
         """删除指定用户的指定价格提醒"""
         price_decimal = self._normalize_price(price)
-        with self._lock:
+        with DataManager._lock:
             if not self._data or user_id not in self._data.alerts:
                 return False
 
@@ -319,7 +320,7 @@ class DataManager:
 
     def remove_user_all_alerts(self, user_id: str) -> int:
         """删除指定用户的所有提醒"""
-        with self._lock:
+        with DataManager._lock:
             if not self._data or user_id not in self._data.alerts:
                 return 0
 
@@ -332,7 +333,7 @@ class DataManager:
     def update_alert(self, user_id: str, price: Union[float, Decimal], updates: dict) -> bool:
         """更新提醒规则的指定字段"""
         price_decimal = self._normalize_price(price)
-        with self._lock:
+        with DataManager._lock:
             if not self._data or user_id not in self._data.alerts:
                 return False
 
@@ -359,7 +360,7 @@ class DataManager:
 
     def unlock_all_alerts(self) -> None:
         """解锁所有提醒规则"""
-        with self._lock:
+        with DataManager._lock:
             if not self._data:
                 return
 
@@ -374,7 +375,7 @@ class DataManager:
     def increment_send_fail(self, user_id: str, price: Union[float, Decimal]) -> int:
         """增加发送失败计数"""
         price_decimal = self._normalize_price(price)
-        with self._lock:
+        with DataManager._lock:
             if not self._data or user_id not in self._data.alerts:
                 return 0
 
@@ -406,7 +407,7 @@ class DataManager:
     def admin_remove_alert(self, user_id: str, price: Union[float, Decimal]) -> tuple[bool, Optional[str]]:
         """管理员删除指定用户的提醒"""
         price_decimal = self._normalize_price(price)
-        with self._lock:
+        with DataManager._lock:
             if not self._data or user_id not in self._data.alerts:
                 return False, None
 
@@ -429,5 +430,5 @@ class DataManager:
         """管理员查看所有用户的提醒数据"""
         if not self._data:
             return {}
-        with self._lock:
+        with DataManager._lock:
             return copy.deepcopy(self._data.alerts)

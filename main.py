@@ -514,12 +514,46 @@ class GoldAlert(Star):
     def _get_client(self):
         """获取平台客户端的bot实例"""
         try:
-            for adapter in self.context.platform_manager.get_insts():
+            adapters = self.context.platform_manager.get_insts()
+            for i, adapter in enumerate(adapters):
                 if hasattr(adapter, "bot") and adapter.bot and hasattr(adapter.bot, "api"):
                     return adapter.bot
+            logger.warning(f"未找到可用的平台适配器 (共检查 {len(adapters)} 个)")
         except Exception as e:
-            logger.debug(f"_get_client 遍历适配器异常: {e}")
+            logger.warning(f"_get_client 遍历适配器异常: {e}")
         return None
+
+    @staticmethod
+    def _validate_numeric_id(value: str | int, field_name: str) -> int | None:
+        """
+        验证并转换ID为正整数
+
+        Args:
+            value: 待验证的值（字符串或整数）
+            field_name: 字段名称（用于日志）
+
+        Returns:
+            有效的正整数，或None（验证失败）
+        """
+        if isinstance(value, int):
+            if value > 0:
+                return value
+            logger.warning(f"{field_name}必须为正数: {value}")
+            return None
+
+        if not isinstance(value, str):
+            logger.warning(f"{field_name}类型错误: {type(value)}")
+            return None
+
+        try:
+            result = int(value)
+            if result <= 0:
+                logger.warning(f"{field_name}必须为正数: {value}")
+                return None
+            return result
+        except (ValueError, TypeError):
+            logger.warning(f"{field_name}格式无效（非数字字符）: {value}")
+            return None
 
     async def _send_message(self, session_id: str, message: str, user_id: str, is_group: bool) -> bool:
         """发送消息给用户（使用平台API直接发送）"""
@@ -529,19 +563,21 @@ class GoldAlert(Star):
                 logger.error("无法获取平台客户端")
                 return False
 
+            validated_user_id = self._validate_numeric_id(user_id, "用户ID")
+            if validated_user_id is None:
+                return False
+
             if is_group:
-                message_parts = [{"type": "at", "data": {"qq": user_id}}, {"type": "text", "data": {"text": f" {message}"}}]
-                try:
-                    await client.api.call_action("send_group_msg", group_id=int(session_id), message=message_parts)
-                except ValueError:
-                    logger.error(f"群ID格式无效: {session_id}")
+                validated_group_id = self._validate_numeric_id(session_id, "群ID")
+                if validated_group_id is None:
                     return False
+                message_parts = [
+                    {"type": "at", "data": {"qq": str(validated_user_id)}},
+                    {"type": "text", "data": {"text": f" {message}"}}
+                ]
+                await client.api.call_action("send_group_msg", group_id=validated_group_id, message=message_parts)
             else:
-                try:
-                    await client.api.call_action("send_private_msg", user_id=int(user_id), message=message)
-                except ValueError:
-                    logger.error(f"用户ID格式无效: {user_id}")
-                    return False
+                await client.api.call_action("send_private_msg", user_id=validated_user_id, message=message)
             return True
         except Exception as e:
             logger.error(f"发送消息失败: {e}", exc_info=True)
