@@ -158,6 +158,7 @@ class PriceMonitor:
                 trigger_batch.append((alert, current_price))
 
             elif action == "unlock":
+                logger.info(f"价格超出范围，解锁提醒: 用户 {alert.user_id}, 价格 {alert.price}, 当前价 ${current_price}")
                 unlock_tasks.append(self._notify_out_of_range(alert, current_price))
                 self.data_manager.unlock_alert(alert.user_id, alert.price)
 
@@ -268,9 +269,16 @@ class PriceMonitor:
             if send_success:
                 self.data_manager.lock_alert(alert.user_id, alert.price)
             else:
-                logger.warning(f"发送失败，不锁定提醒: 用户 {alert.user_id}")
+                logger.warning(f"发送失败，锁定提醒以防止重复触发: 用户 {alert.user_id}")
+                self.data_manager.lock_alert(alert.user_id, alert.price)
+                self.data_manager.increment_send_fail(alert.user_id, alert.price)
         except Exception as e:
             logger.error(f"发送提醒消息失败: 用户 {alert.user_id}, 错误: {e}")
+            logger.warning(f"异常情况下仍锁定提醒: 用户 {alert.user_id}")
+            try:
+                self.data_manager.lock_alert(alert.user_id, alert.price)
+            except Exception:
+                pass
             raise
 
     async def _trigger_alert_safe(self, alert: AlertRule, current_price: Decimal) -> None:

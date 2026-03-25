@@ -35,6 +35,7 @@
 
 import os
 import functools
+import asyncio
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register, StarTools
 from astrbot.api import logger, AstrBotConfig
@@ -515,12 +516,19 @@ class GoldAlert(Star):
         """获取平台客户端的bot实例"""
         try:
             adapters = self.context.platform_manager.get_insts()
+            if not adapters:
+                adapters = getattr(self.context.platform_manager, 'platform_insts', []) or []
+            
             for i, adapter in enumerate(adapters):
                 if hasattr(adapter, "bot") and adapter.bot and hasattr(adapter.bot, "api"):
+                    logger.debug(f"找到平台适配器 #{i}: {type(adapter).__name__}")
                     return adapter.bot
+            
             logger.warning(f"未找到可用的平台适配器 (共检查 {len(adapters)} 个)")
+            for i, adapter in enumerate(adapters):
+                logger.debug(f"适配器 #{i}: type={type(adapter).__name__}, has_bot={hasattr(adapter, 'bot')}, bot={getattr(adapter, 'bot', None)}")
         except Exception as e:
-            logger.warning(f"_get_client 遍历适配器异常: {e}")
+            logger.warning(f"_get_client 遍历适配器异常: {e}", exc_info=True)
         return None
 
     @staticmethod
@@ -555,33 +563,62 @@ class GoldAlert(Star):
             logger.warning(f"{field_name}格式无效（非数字字符）: {value}")
             return None
 
-    async def _send_message(self, session_id: str, message: str, user_id: str, is_group: bool) -> bool:
-        """发送消息给用户（使用平台API直接发送）"""
-        try:
-            client = self._get_client()
-            if not client:
-                logger.error("无法获取平台客户端")
-                return False
+    async def _send_message(self, session_id: str, message: str, user_id: str, is_group: bool, max_retries: int = 2) -> bool:
+        """
+        发送消息给用户（使用平台API直接发送）
 
-            validated_user_id = self._validate_numeric_id(user_id, "用户ID")
-            if validated_user_id is None:
-                return False
+        Args:
+            session_id: 会话ID（群ID或用户ID）
+            message: 消息内容
+            user_id: 用户ID
+            is_group: 是否为群聊
+            max_retries: 最大重试次数
 
-            if is_group:
-                validated_group_id = self._validate_numeric_id(session_id, "群ID")
-                if validated_group_id is None:
+        Returns:
+            True: 发送成功
+            False: 发送失败
+        """
+        last_error = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                client = self._get_client()
+                if not client:
+                    if attempt < max_retries:
+                        wait_time = 0.5 * (2 ** attempt)
+                        logger.warning(f"无法获取平台客户端，第 {attempt + 1}/{max_retries + 1} 次尝试，将在 {wait_time}s 后重试")
+                        await asyncio.sleep(wait_time)
+                        continue
+                    logger.error("无法获取平台客户端，已达到最大重试次数")
                     return False
-                message_parts = [
-                    {"type": "at", "data": {"qq": str(validated_user_id)}},
-                    {"type": "text", "data": {"text": f" {message}"}}
-                ]
-                await client.api.call_action("send_group_msg", group_id=validated_group_id, message=message_parts)
-            else:
-                await client.api.call_action("send_private_msg", user_id=validated_user_id, message=message)
-            return True
-        except Exception as e:
-            logger.error(f"发送消息失败: {e}", exc_info=True)
-            return False
+
+                validated_user_id = self._validate_numeric_id(user_id, "用户ID")
+                if validated_user_id is None:
+                    return False
+
+                if is_group:
+                    validated_group_id = self._validate_numeric_id(session_id, "群ID")
+                    if validated_group_id is None:
+                        return False
+                    message_parts = [
+                        {"type": "at", "data": {"qq": str(validated_user_id)}},
+                        {"type": "text", "data": {"text": f" {message}"}}
+                    ]
+                    await client.api.call_action("send_group_msg", group_id=validated_group_id, message=message_parts)
+                else:
+                    await client.api.call_action("send_private_msg", user_id=validated_user_id, message=message)
+                return True
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries:
+                    wait_time = 0.5 * (2 ** attempt)
+                    logger.warning(f"发送消息失败，第 {attempt + 1}/{max_retries + 1} 次尝试，错误: {e}，{wait_time}s 后重试")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error(f"发送消息失败，已达到最大重试次数: {e}")
+
+        logger.error(f"发送消息最终失败: {last_error}")
+        return False
 
     async def send_user_message(self, user_id: str, message: str) -> bool:
         """
