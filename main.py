@@ -231,6 +231,8 @@ class GoldAlert(Star):
         self.commands = GoldAlertCommands(self)
         self._initialized = False
         self._init_failed = False
+        self._cached_client = None
+        self._client_cache_valid = False
 
     async def initialize(self) -> None:
         """
@@ -527,23 +529,70 @@ class GoldAlert(Star):
         return True
 
     def _get_client(self):
-        """获取平台客户端的bot实例"""
+        """
+        获取平台客户端的bot实例
+        
+        使用缓存机制避免频繁遍历适配器列表。
+        支持多种适配器结构以提高兼容性。
+        """
+        if self._client_cache_valid and self._cached_client is not None:
+            return self._cached_client
+        
         try:
             adapters = self.context.platform_manager.get_insts()
             if not adapters:
                 adapters = getattr(self.context.platform_manager, 'platform_insts', []) or []
             
+            if not adapters:
+                logger.warning("平台适配器列表为空，请检查AstrBot配置")
+                return None
+            
             for i, adapter in enumerate(adapters):
+                adapter_type = type(adapter).__name__
+                logger.debug(f"检查适配器 #{i}: {adapter_type}")
+                
                 if hasattr(adapter, "bot") and adapter.bot and hasattr(adapter.bot, "api"):
-                    logger.debug(f"找到平台适配器 #{i}: {type(adapter).__name__}")
+                    logger.info(f"找到平台适配器: {adapter_type}")
+                    self._cached_client = adapter.bot
+                    self._client_cache_valid = True
                     return adapter.bot
+                
+                if hasattr(adapter, "api") and callable(adapter.api):
+                    logger.info(f"找到平台适配器 (直接API): {adapter_type}")
+                    self._cached_client = adapter
+                    self._client_cache_valid = True
+                    return adapter
+                
+                if hasattr(adapter, "send_message") and callable(adapter.send_message):
+                    logger.info(f"找到平台适配器 (直接发送): {adapter_type}")
+                    self._cached_client = adapter
+                    self._client_cache_valid = True
+                    return adapter
+                
+                bot_obj = getattr(adapter, 'bot', None)
+                if bot_obj:
+                    logger.debug(f"适配器 {adapter_type} 有bot对象: {type(bot_obj).__name__}")
+                    if hasattr(bot_obj, "api"):
+                        logger.info(f"找到平台适配器 (嵌套bot): {adapter_type}")
+                        self._cached_client = bot_obj
+                        self._client_cache_valid = True
+                        return bot_obj
             
             logger.warning(f"未找到可用的平台适配器 (共检查 {len(adapters)} 个)")
             for i, adapter in enumerate(adapters):
-                logger.debug(f"适配器 #{i}: type={type(adapter).__name__}, has_bot={hasattr(adapter, 'bot')}, bot={getattr(adapter, 'bot', None)}")
+                adapter_type = type(adapter).__name__
+                attrs = [attr for attr in dir(adapter) if not attr.startswith('_')]
+                logger.debug(f"适配器 #{i}: type={adapter_type}, attrs={attrs[:10]}")
         except Exception as e:
-            logger.warning(f"_get_client 遍历适配器异常: {e}", exc_info=True)
+            logger.error(f"_get_client 遍历适配器异常: {e}", exc_info=True)
+        
         return None
+    
+    def _invalidate_client_cache(self):
+        """使客户端缓存失效，下次调用时会重新获取"""
+        self._client_cache_valid = False
+        self._cached_client = None
+        logger.debug("平台客户端缓存已失效")
 
     @staticmethod
     def _validate_numeric_id(value: str | int, field_name: str) -> int | str | None:
@@ -616,11 +665,12 @@ class GoldAlert(Star):
 
         for attempt in range(max_retries + 1):
             try:
+                self._invalidate_client_cache()
                 client = self._get_client()
                 if not client:
                     if attempt < max_retries:
                         wait_time = 0.5 * (2 ** attempt)
-                        logger.warning(f"无法获取平台客户端，第 {attempt + 1}/{max_retries + 1} 次尝试，将在 {wait_time}s 后重试")
+                        logger.warning(f"无法获取飞书平台客户端，第 {attempt + 1}/{max_retries + 1} 次尝试，将在 {wait_time}s 后重试")
                         await asyncio.sleep(wait_time)
                         continue
                     logger.error("无法获取平台客户端，已达到最大重试次数")
@@ -672,6 +722,7 @@ class GoldAlert(Star):
 
         for attempt in range(max_retries + 1):
             try:
+                self._invalidate_client_cache()
                 client = self._get_client()
                 if not client:
                     if attempt < max_retries:
