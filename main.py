@@ -531,32 +531,32 @@ class GoldAlert(Star):
     def _get_client(self):
         """
         获取平台客户端的bot实例
-        
+
         使用缓存机制避免频繁遍历适配器列表。
         支持多种适配器结构以提高兼容性。
         """
-        if self._client_cache_valid and self._cached_client is not None:
+        if self._cached_client is not None and self._client_cache_valid:
             return self._cached_client
-        
+
         try:
             adapters = self.context.platform_manager.get_insts()
             if not adapters:
                 adapters = getattr(self.context.platform_manager, 'platform_insts', []) or []
-            
+
             if not adapters:
                 logger.warning("平台适配器列表为空，请检查AstrBot配置")
                 return None
-            
+
             for i, adapter in enumerate(adapters):
                 adapter_type = type(adapter).__name__
                 logger.debug(f"检查适配器 #{i}: {adapter_type}")
-                
+
                 if hasattr(adapter, "bot") and adapter.bot and hasattr(adapter.bot, "api"):
                     logger.info(f"找到平台适配器: {adapter_type}")
                     self._cached_client = adapter.bot
                     self._client_cache_valid = True
                     return adapter.bot
-                
+
                 if hasattr(adapter, "api") and callable(adapter.api):
                     logger.info(f"找到平台适配器 (直接API): {adapter_type}")
                     self._cached_client = adapter
@@ -664,18 +664,18 @@ class GoldAlert(Star):
         last_error = None
 
         for attempt in range(max_retries + 1):
-            try:
-                self._invalidate_client_cache()
-                client = self._get_client()
-                if not client:
-                    if attempt < max_retries:
-                        wait_time = 0.5 * (2 ** attempt)
-                        logger.warning(f"无法获取飞书平台客户端，第 {attempt + 1}/{max_retries + 1} 次尝试，将在 {wait_time}s 后重试")
-                        await asyncio.sleep(wait_time)
-                        continue
-                    logger.error("无法获取平台客户端，已达到最大重试次数")
-                    return False
+            client = self._get_client()
+            if not client:
+                if attempt < max_retries:
+                    self._invalidate_client_cache()
+                    wait_time = 0.5 * (2 ** attempt)
+                    logger.warning(f"无法获取飞书平台客户端，第 {attempt + 1}/{max_retries + 1} 次尝试，将在 {wait_time}s 后重试")
+                    await asyncio.sleep(wait_time)
+                    continue
+                logger.error("无法获取平台客户端，已达到最大重试次数")
+                return False
 
+            try:
                 msg_content = {"text": message}
                 await client.api.call_action(
                     "send_msg",
@@ -721,22 +721,22 @@ class GoldAlert(Star):
         last_error = None
 
         for attempt in range(max_retries + 1):
+            client = self._get_client()
+            if not client:
+                if attempt < max_retries:
+                    self._invalidate_client_cache()
+                    wait_time = 0.5 * (2 ** attempt)
+                    logger.warning(f"无法获取平台客户端，第 {attempt + 1}/{max_retries + 1} 次尝试，将在 {wait_time}s 后重试")
+                    await asyncio.sleep(wait_time)
+                    continue
+                logger.error("无法获取平台客户端，已达到最大重试次数")
+                return False
+
+            validated_user_id = self._validate_numeric_id(user_id, "用户ID")
+            if validated_user_id is None:
+                return False
+
             try:
-                self._invalidate_client_cache()
-                client = self._get_client()
-                if not client:
-                    if attempt < max_retries:
-                        wait_time = 0.5 * (2 ** attempt)
-                        logger.warning(f"无法获取平台客户端，第 {attempt + 1}/{max_retries + 1} 次尝试，将在 {wait_time}s 后重试")
-                        await asyncio.sleep(wait_time)
-                        continue
-                    logger.error("无法获取平台客户端，已达到最大重试次数")
-                    return False
-
-                validated_user_id = self._validate_numeric_id(user_id, "用户ID")
-                if validated_user_id is None:
-                    return False
-
                 if is_group:
                     validated_group_id = self._validate_numeric_id(session_id, "群ID")
                     if validated_group_id is None:
