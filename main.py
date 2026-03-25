@@ -34,6 +34,7 @@
 """
 
 import os
+import re
 import functools
 import asyncio
 from astrbot.api.event import filter, AstrMessageEvent
@@ -57,6 +58,19 @@ def require_initialized(func):
         async for result in func(self, event, *args, **kwargs):
             yield result
     return wrapper
+
+
+def is_feishu_open_id(user_id: str) -> bool:
+    """
+    检测用户ID是否为飞书open_id格式
+
+    飞书open_id格式：ou_ 开头，后接32位字母数字
+    例如：ou_490430a1eac67c500f8b9dda07d8548f
+    """
+    if not user_id:
+        return False
+    pattern = r'^ou_[a-f0-9]{32}$'
+    return bool(re.match(pattern, user_id, re.IGNORECASE))
 
 
 @register(
@@ -532,16 +546,16 @@ class GoldAlert(Star):
         return None
 
     @staticmethod
-    def _validate_numeric_id(value: str | int, field_name: str) -> int | None:
+    def _validate_numeric_id(value: str | int, field_name: str) -> int | str | None:
         """
-        验证并转换ID为正整数
+        验证并转换ID为正整数或飞书open_id
 
         Args:
             value: 待验证的值（字符串或整数）
             field_name: 字段名称（用于日志）
 
         Returns:
-            有效的正整数，或None（验证失败）
+            有效的正整数、飞书open_id字符串，或None（验证失败）
         """
         if isinstance(value, int):
             if value > 0:
@@ -553,6 +567,9 @@ class GoldAlert(Star):
             logger.warning(f"{field_name}类型错误: {type(value)}")
             return None
 
+        if is_feishu_open_id(value):
+            return value
+
         try:
             result = int(value)
             if result <= 0:
@@ -563,9 +580,79 @@ class GoldAlert(Star):
             logger.warning(f"{field_name}格式无效（非数字字符）: {value}")
             return None
 
+    async def _send_message_lark(
+        self,
+        session_id: str,
+        message: str,
+        user_id: str,
+        is_group: bool,
+        max_retries: int = 2
+    ) -> bool:
+        """
+        发送消息给飞书用户（使用飞书专用API）
+
+        飞书平台使用不同的消息API：
+        - 消息格式：{"open_id": "ou_xxx", "msg_type": "text", "content": {"text": "..."}}
+        - 使用 send_msg 而非 send_private_msg
+
+        Args:
+            session_id: 会话ID（飞书chat_id）
+            message: 消息内容
+            user_id: 用户open_id
+            is_group: 是否为群聊
+            max_retries: 最大重试次数
+
+        Returns:
+            True: 发送成功
+            False: 发送失败
+        """
+        if not is_feishu_open_id(user_id):
+            logger.warning(f"非飞书open_id格式，跳过飞书发送方法: {user_id}")
+            return False
+
+        logger.info(f"检测到飞书平台用户: {user_id}，使用飞书专用发送方法")
+
+        last_error = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                client = self._get_client()
+                if not client:
+                    if attempt < max_retries:
+                        wait_time = 0.5 * (2 ** attempt)
+                        logger.warning(f"无法获取平台客户端，第 {attempt + 1}/{max_retries + 1} 次尝试，将在 {wait_time}s 后重试")
+                        await asyncio.sleep(wait_time)
+                        continue
+                    logger.error("无法获取平台客户端，已达到最大重试次数")
+                    return False
+
+                msg_content = {"text": message}
+                await client.api.call_action(
+                    "send_msg",
+                    open_id=user_id,
+                    msg_type="text",
+                    content=msg_content
+                )
+                return True
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries:
+                    wait_time = 0.5 * (2 ** attempt)
+                    logger.warning(f"飞书发送消息失败，第 {attempt + 1}/{max_retries + 1} 次尝试，错误: {e}，{wait_time}s 后重试")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error(f"飞书发送消息失败，已达到最大重试次数: {e}")
+
+        logger.error(f"飞书发送消息最终失败: {last_error}")
+        return False
+
     async def _send_message(self, session_id: str, message: str, user_id: str, is_group: bool, max_retries: int = 2) -> bool:
         """
         发送消息给用户（使用平台API直接发送）
+
+        自动检测平台类型：
+        - 飞书平台：使用 send_msg API
+        - 其他平台（QQ等）：使用 send_private_msg / send_group_msg API
 
         Args:
             session_id: 会话ID（群ID或用户ID）
@@ -578,6 +665,9 @@ class GoldAlert(Star):
             True: 发送成功
             False: 发送失败
         """
+        if is_feishu_open_id(user_id):
+            return await self._send_message_lark(session_id, message, user_id, is_group, max_retries)
+
         last_error = None
 
         for attempt in range(max_retries + 1):
