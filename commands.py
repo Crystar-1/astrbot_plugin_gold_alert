@@ -15,6 +15,29 @@ if TYPE_CHECKING:
     from .main import GoldAlert
 
 
+def _parse_price(price_str: str, check_range: bool = True) -> Decimal | None:
+    """
+    解析价格字符串为Decimal类型
+
+    Args:
+        price_str: 价格字符串
+        check_range: 是否检查合理范围
+
+    Returns:
+        Decimal类型的价格，解析失败返回None
+    """
+    try:
+        price = Decimal(str(price_str)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if price <= 0:
+            return None
+        if check_range and (price < MIN_PRICE or price > MAX_PRICE):
+            logger.warning(f"价格超出合理范围: {price} (期望: {MIN_PRICE}-{MAX_PRICE})")
+            return None
+        return price
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
 def parse_price(price_str: str) -> Decimal | None:
     """
     解析价格字符串为Decimal类型（带边界检查）
@@ -25,16 +48,7 @@ def parse_price(price_str: str) -> Decimal | None:
     Returns:
         Decimal类型的价格，解析失败返回None
     """
-    try:
-        price = Decimal(str(price_str)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        if price <= 0:
-            return None
-        if price < MIN_PRICE or price > MAX_PRICE:
-            logger.warning(f"价格超出合理范围: {price} (期望: {MIN_PRICE}-{MAX_PRICE})")
-            return None
-        return price
-    except (InvalidOperation, ValueError, TypeError):
-        return None
+    return _parse_price(price_str, check_range=True)
 
 
 def parse_price_for_delete(price_str: str) -> Decimal | None:
@@ -47,13 +61,7 @@ def parse_price_for_delete(price_str: str) -> Decimal | None:
     Returns:
         Decimal类型的价格，解析失败返回None
     """
-    try:
-        price = Decimal(str(price_str)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        if price <= 0:
-            return None
-        return price
-    except (InvalidOperation, ValueError, TypeError):
-        return None
+    return _parse_price(price_str, check_range=False)
 
 
 class GoldAlertCommands:

@@ -150,16 +150,16 @@ class GoldAlert(Star):
 
     def _validate_and_apply_monitor_config(self) -> None:
         """验证并应用监控配置参数"""
-        self.query_interval = self.config.get("query_interval", 12)
+        self.query_interval = self.config.get("query_interval", 10)
         self.float_range = self.config.get("float_range", 10.0)
         self.lock_duration = self.config.get("lock_duration", 300)
         self.alert_interval = self.config.get("alert_interval", 5)
         self.alert_count = self.config.get("alert_count", 3)
         self.retry_count = self.config.get("retry_count", 2)
 
-        self.query_interval = self._clamp_value(self.query_interval, 5, 300, 12, "query_interval")
+        self.query_interval = self._clamp_value(self.query_interval, 5, 300, 10, "query_interval")
         self.float_range = self._clamp_value(self.float_range, 1.0, 100.0, 10.0, "float_range")
-        self.lock_duration = self._clamp_value(self.lock_duration, 60, 3600, 300, "lock_duration")
+        self.lock_duration = self._clamp_value(self.lock_duration, 10, 3600, 300, "lock_duration")
         self.alert_interval = self._clamp_value(self.alert_interval, 1, 60, 5, "alert_interval")
         self.alert_count = self._clamp_value(self.alert_count, 1, 10, 3, "alert_count")
         self.retry_count = self._clamp_value(self.retry_count, 0, 5, 2, "retry_count")
@@ -417,7 +417,7 @@ class GoldAlert(Star):
 
     @admgold.command("rm")
     @require_initialized
-    async def cmd_admgold_rm(self, event: AstrMessageEvent, price: float, user_id: str):
+    async def cmd_admgold_rm(self, event: AstrMessageEvent, price: str, user_id: str):
         """
         删除指定用户的提醒
 
@@ -430,7 +430,7 @@ class GoldAlert(Star):
         if not self._check_admin(event):
             yield event.plain_result("❌ 您没有管理员权限，无法执行此操作")
             return
-        async for result in self.commands.cmd_admin_rm(event, str(price), user_id):
+        async for result in self.commands.cmd_admin_rm(event, price, user_id):
             yield result
 
     @admgold.command("restart")

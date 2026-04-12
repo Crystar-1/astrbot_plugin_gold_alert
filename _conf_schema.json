@@ -34,7 +34,7 @@
     "query_interval": {
         "description": "价格查询间隔",
         "type": "int",
-        "hint": "全局统一价格查询间隔(秒)，建议设置为12-30秒之间。仅在REST模式下生效。",
+        "hint": "全局统一价格查询间隔(秒)，建议设置为10-30秒之间。仅在REST模式下生效。",
         "obvious_hint": true,
         "default": 12,
         "min": 5,
@@ -59,7 +59,7 @@
         "hint": "触发锁定后自动解锁的时长，防止短时间内重复触发提醒。",
         "obvious_hint": true,
         "default": 300,
-        "min": 60,
+        "min": 10,
         "max": 3600,
         "unit": "秒",
         "category": "monitor"

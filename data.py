@@ -102,7 +102,7 @@ class AlertRule:
                 lock_time=data.get("lock_time"),
                 is_disabled=bool(data.get("is_disabled", False)),
                 send_fail_count=int(data.get("send_fail_count", 0)),
-                created_at=data.get("created_at", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                created_at=data.get("created_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             )
         except (TypeError, ValueError) as e:
             logger.warning(f"AlertRule反序列化失败: {e}")
@@ -222,10 +222,11 @@ class DataManager:
 
     def _save_sync(self) -> None:
         """同步保存数据到文件"""
-        self._ensure_dir()
-        with open(self.data_file, "w", encoding="utf-8") as f:
-            json.dump(self._data.to_dict(), f, ensure_ascii=False, indent=2, cls=DecimalEncoder)
-        logger.debug("数据已保存")
+        with DataManager._lock:
+            self._ensure_dir()
+            with open(self.data_file, "w", encoding="utf-8") as f:
+                json.dump(self._data.to_dict(), f, ensure_ascii=False, indent=2, cls=DecimalEncoder)
+            logger.debug("数据已保存")
 
     async def async_save(self) -> None:
         """
@@ -233,7 +234,7 @@ class DataManager:
 
         使用asyncio.to_thread()避免阻塞事件循环
         """
-        await asyncio.to_thread(self._save_with_lock)
+        await asyncio.to_thread(self._save_sync)
 
     def _save_with_lock(self) -> None:
         """带锁的同步保存"""

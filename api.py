@@ -155,7 +155,7 @@ class GoldPriceAPI:
         self._ws_connected = Event()
         self._latest_price: Optional[GoldPrice] = None
         self._price_callback: Optional[callable] = None
-        self._callback_queue: asyncio.Queue = asyncio.Queue(maxsize=MAX_CALLBACK_QUEUE_SIZE)
+        self._callback_queue: asyncio.Queue | None = None
         self._callback_task: Optional[asyncio.Task] = None
         self._websocket_module: Optional[object] = None
         self._websocket_available: Optional[bool] = None
@@ -229,6 +229,12 @@ class GoldPriceAPI:
             logger.warning(f"价格数据解析失败: {e}")
             return None
 
+    def _get_callback_queue(self) -> asyncio.Queue:
+        """获取或创建回调队列（延迟初始化）"""
+        if self._callback_queue is None:
+            self._callback_queue = asyncio.Queue(maxsize=MAX_CALLBACK_QUEUE_SIZE)
+        return self._callback_queue
+
     def _start_callback_processor(self) -> bool:
         """
         启动回调处理器（在事件循环中调用）
@@ -243,6 +249,9 @@ class GoldPriceAPI:
             logger.warning("无法获取运行中的事件循环，跳过回调处理器初始化")
             return False
 
+        # 延迟初始化队列
+        self._get_callback_queue()
+
         if self._callback_task is None or self._callback_task.done():
             self._callback_task = loop.create_task(self._process_callbacks())
             logger.debug("回调处理器任务已创建")
@@ -253,8 +262,9 @@ class GoldPriceAPI:
         """处理回调队列中的异步任务"""
         while self._ws_running.is_set():
             try:
+                queue = self._get_callback_queue()
                 callback, price = await asyncio.wait_for(
-                    self._callback_queue.get(),
+                    queue.get(),
                     timeout=1.0
                 )
                 if asyncio.iscoroutinefunction(callback):
@@ -608,7 +618,8 @@ class GoldPriceAPI:
             gold_price: 价格数据
         """
         try:
-            self._callback_queue.put_nowait((callback, gold_price))
+            queue = self._get_callback_queue()
+            queue.put_nowait((callback, gold_price))
         except asyncio.QueueFull:
             logger.warning("回调队列已满，跳过此次回调")
 

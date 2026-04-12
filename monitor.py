@@ -207,7 +207,7 @@ class PriceMonitor:
             f"穿过={crossed}, 锁定={alert.is_locked}, 超出范围={out_of_range}"
         )
 
-        if crossed and not alert.is_locked and not out_of_range:
+        if crossed and not alert.is_locked:
             return "trigger"
         elif out_of_range and alert.is_locked:
             return "unlock"
@@ -233,7 +233,13 @@ class PriceMonitor:
         return current_price < lower_bound or current_price > upper_bound
 
     def _check_cross(self, alert: AlertRule, current_price: Decimal) -> bool:
-        """检查价格是否穿过设定价"""
+        """
+        检查价格是否穿过设定价
+        
+        支持两种情况：
+        1. 相邻两次查询价格穿过设定价（精准穿过）
+        2. 跨周期触发：两次查询价格分别在设定价两侧（如上次1899，当前1901，设定价1900）
+        """
         if self._last_price is None:
             return False
 
@@ -241,10 +247,26 @@ class PriceMonitor:
         prev = self._last_price
         curr = current_price
 
+        # 情况1：精准穿过（前次<设定价<=当前 或 前次>设定价>=当前）
         crossed_up = prev < target_price <= curr
         crossed_down = prev > target_price >= curr
-        if crossed_up or crossed_down:
-            logger.info(f"价格穿过: 设定价=${target_price}, 前次=${prev}, 当前=${curr}")
+        
+        # 情况2：跨周期触发（价格跳过设定价）
+        # 上次1899，当前1901，设定价1900 -> 触发
+        skipped_up = prev < target_price and curr > target_price
+        skipped_down = prev > target_price and curr < target_price
+        
+        if crossed_up or crossed_down or skipped_up or skipped_down:
+            cross_type = ""
+            if crossed_up:
+                cross_type = "上涨穿过"
+            elif crossed_down:
+                cross_type = "下跌穿过"
+            elif skipped_up:
+                cross_type = "上涨跳过"
+            elif skipped_down:
+                cross_type = "下跌跳过"
+            logger.info(f"价格{cross_type}: 设定价=${target_price}, 前次=${prev}, 当前=${curr}")
             return True
         return False
 
@@ -258,7 +280,9 @@ class PriceMonitor:
             elapsed = (datetime.now() - lock_dt).total_seconds()
             return elapsed >= self.config.lock_duration
         except (ValueError, TypeError):
-            return True
+            # 解析失败时保守处理：不自动解锁，等待下次正常判断
+            logger.warning(f"锁定时间解析失败: {alert.lock_time}，保持锁定状态")
+            return False
 
     async def _trigger_alert(self, alert: AlertRule, current_price: Decimal) -> None:
         """触发提醒"""
@@ -279,7 +303,6 @@ class PriceMonitor:
                 self.data_manager.lock_alert(alert.user_id, alert.price)
             except Exception:
                 pass
-            raise
 
     async def _trigger_alert_safe(self, alert: AlertRule, current_price: Decimal) -> None:
         """
