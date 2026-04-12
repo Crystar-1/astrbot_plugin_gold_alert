@@ -222,11 +222,10 @@ class DataManager:
 
     def _save_sync(self) -> None:
         """同步保存数据到文件"""
-        with DataManager._lock:
-            self._ensure_dir()
-            with open(self.data_file, "w", encoding="utf-8") as f:
-                json.dump(self._data.to_dict(), f, ensure_ascii=False, indent=2, cls=DecimalEncoder)
-            logger.debug("数据已保存")
+        self._ensure_dir()
+        with open(self.data_file, "w", encoding="utf-8") as f:
+            json.dump(self._data.to_dict(), f, ensure_ascii=False, indent=2, cls=DecimalEncoder)
+        logger.debug("数据已保存")
 
     async def async_save(self) -> None:
         """
@@ -234,7 +233,7 @@ class DataManager:
 
         使用asyncio.to_thread()避免阻塞事件循环
         """
-        await asyncio.to_thread(self._save_sync)
+        await asyncio.to_thread(self._save_with_lock)
 
     def _save_with_lock(self) -> None:
         """带锁的同步保存"""
