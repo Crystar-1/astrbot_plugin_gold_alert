@@ -59,7 +59,7 @@
         "hint": "触发锁定后自动解锁的时长，防止短时间内重复触发提醒。",
         "obvious_hint": true,
         "default": 300,
-        "min": 10,
+        "min": 60,
         "max": 3600,
         "unit": "秒",
         "category": "monitor"

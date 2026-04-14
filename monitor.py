@@ -159,12 +159,11 @@ class PriceMonitor:
 
             elif action == "unlock":
                 logger.info(f"价格超出范围，解锁提醒: 用户 {alert.user_id}, 价格 {alert.price}, 当前价 ${current_price}")
-                unlock_tasks.append(self._notify_out_of_range(alert, current_price))
-                self.data_manager.unlock_alert(alert.user_id, alert.price)
+                unlock_tasks.append(self._do_unlock_and_notify(alert, current_price))
 
             elif action == "timeout_unlock":
                 logger.info(f"锁定超时解锁: 用户 {alert.user_id}, 价格 {alert.price}")
-                self.data_manager.unlock_alert(alert.user_id, alert.price)
+                unlock_tasks.append(self._do_unlock(alert))
 
         if unlock_tasks:
             await asyncio.gather(*unlock_tasks, return_exceptions=True)
@@ -362,6 +361,15 @@ class PriceMonitor:
             await self._notify_admin(
                 f"⚠️ 用户 {user_id} 提醒已被禁用，原因：连续{MAX_SEND_FAIL_COUNT}次消息发送失败（价格: {price}）"
             )
+
+    async def _do_unlock(self, alert: AlertRule) -> None:
+        """异步解锁提醒"""
+        await asyncio.to_thread(self.data_manager.unlock_alert, alert.user_id, alert.price)
+
+    async def _do_unlock_and_notify(self, alert: AlertRule, current_price: Decimal) -> None:
+        """异步解锁提醒并发送通知"""
+        await asyncio.to_thread(self.data_manager.unlock_alert, alert.user_id, alert.price)
+        await self._notify_out_of_range(alert, current_price)
 
     def is_running(self) -> bool:
         """检查监控是否运行中"""

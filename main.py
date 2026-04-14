@@ -75,7 +75,7 @@ def is_feishu_open_id(user_id: str) -> bool:
 
 @register(
     "gold_alert",
-    "YourName",
+    "Crystar-1",
     "伦敦金实时价格监控与到价提醒插件",
     "v1.0.0"
 )
@@ -159,7 +159,7 @@ class GoldAlert(Star):
 
         self.query_interval = self._clamp_value(self.query_interval, 5, 300, 10, "query_interval")
         self.float_range = self._clamp_value(self.float_range, 1.0, 100.0, 10.0, "float_range")
-        self.lock_duration = self._clamp_value(self.lock_duration, 10, 3600, 300, "lock_duration")
+        self.lock_duration = self._clamp_value(self.lock_duration, 60, 3600, 300, "lock_duration")
         self.alert_interval = self._clamp_value(self.alert_interval, 1, 60, 5, "alert_interval")
         self.alert_count = self._clamp_value(self.alert_count, 1, 10, 3, "alert_count")
         self.retry_count = self._clamp_value(self.retry_count, 0, 5, 2, "retry_count")

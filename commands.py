@@ -234,16 +234,9 @@ class GoldAlertCommands:
         for user_id, alerts in all_alerts.items():
             lines.append(f"👤 用户 {user_id} ({len(alerts)} 条提醒)：")
             for alert in alerts:
-                if isinstance(alert, dict):
-                    # 处理dict类型（admin_list_all_alerts返回的格式）
-                    status = "🔒 锁定" if alert.get("is_locked") else "✅ 可用"
-                    disabled = "⛔ 禁用" if alert.get("is_disabled") else ""
-                    price_val = alert.get('price')
-                else:
-                    # 处理AlertRule对象（备用兼容）
-                    status = "🔒 锁定" if alert.is_locked else "✅ 可用"
-                    disabled = "⛔ 禁用" if alert.is_disabled else ""
-                    price_val = alert.price
+                status = "🔒 锁定" if alert.get("is_locked") else "✅ 可用"
+                disabled = "⛔ 禁用" if alert.get("is_disabled") else ""
+                price_val = alert.get('price')
                 lines.append(f"   💰 {price_val} 美元/盎司 {status} {disabled}")
             lines.append("")
 
