@@ -534,7 +534,7 @@ class GoldPriceAPI:
                 logger.error(f"WebSocket异常: {e}")
 
         if reconnect_attempts >= max_reconnect_attempts:
-            logger.error("WebSocket重连次数耗尽，停止重连")
+            logger.error("WebSocket重连次数耗尽，停止重连。如需恢复监控请重启插件。")
             self._ws_thread = None
             self._ws = None
 
@@ -596,7 +596,8 @@ class GoldPriceAPI:
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
-                loop = asyncio.get_event_loop()
+                logger.warning("无法获取运行中的事件循环，跳过回调")
+                return
 
             if loop.is_running():
                 loop.call_soon_threadsafe(

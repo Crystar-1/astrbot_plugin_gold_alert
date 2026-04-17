@@ -166,7 +166,10 @@ class PriceMonitor:
                 unlock_tasks.append(self._do_unlock(alert))
 
         if unlock_tasks:
-            await asyncio.gather(*unlock_tasks, return_exceptions=True)
+            results = await asyncio.gather(*unlock_tasks, return_exceptions=True)
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.error(f"解锁任务执行失败: {result}")
 
         if trigger_batch:
             logger.info(f"准备触发 {len(trigger_batch)} 个提醒任务")

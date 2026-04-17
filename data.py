@@ -259,12 +259,13 @@ class DataManager:
         if not self._data:
             return []
 
-        all_alerts = []
-        for user_alerts in self._data.alerts.values():
-            for alert_data in user_alerts:
-                alert = AlertRule.from_dict(alert_data)
-                if alert is not None:
-                    all_alerts.append(alert)
+        with DataManager._lock:
+            all_alerts = []
+            for user_alerts in self._data.alerts.values():
+                for alert_data in user_alerts:
+                    alert = AlertRule.from_dict(alert_data)
+                    if alert is not None:
+                        all_alerts.append(alert)
         return all_alerts
 
     def get_user_alerts(self, user_id: str) -> List[AlertRule]:
